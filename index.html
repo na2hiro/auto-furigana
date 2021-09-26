@@ -1,0 +1,167 @@
+<title>Auto furigana</title>
+
+<h1>Auto furigana</h1>
+
+<div id="lastHiragana"></div>
+<p>
+<div>
+	<span id="completedOutput"></span>
+	<input id="input" autofocus placeholder="Input and convert Kana/Kanji text here">
+</div>
+</p>
+<textarea id="completedOutputText" style="width: 100%; height: 50%"></textarea>
+
+
+<script>
+    const input = document.getElementById("input");
+    const completedOutput = document.getElementById("completedOutput");
+    const completedOutputText = document.getElementById("completedOutputText");
+
+    let nowConverting = false;
+    let lastHiragana = "";
+    let convertingLength = 0;
+    input.addEventListener("keydown", (e) => {
+        if (nowConverting) {
+            if (["Tab", "Space", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Shift"].indexOf(e.code) >= 0) {
+                console.log("selecting");
+                convertingLength = input.value.length;
+                console.log("len", convertingLength);
+                // selecting
+                return;
+            }
+            if (["Backspace"].indexOf(e.code) >= 0) {
+                // go out
+                nowConverting = false;
+                return;
+            }
+            // Convert complete
+            return complete();
+        }
+        if (e.code === "Enter") {
+            return complete();
+        }
+        if (e.code === "Space") {
+            if (!nowConverting) {
+                lastHiragana = input.value;
+                console.log(lastHiragana, e.code);
+            }
+            convertingLength = input.value.length;
+            console.log("len", convertingLength);
+            nowConverting = true;
+        }
+    });
+
+    function complete() {
+        nowConverting = false;
+        const kanjiKana = input.value;
+        console.log(kanjiKana, lastHiragana, getRubies(kanjiKana, lastHiragana));
+        const [elem, text] = getRubiedElementAndText(kanjiKana, lastHiragana);
+        completedOutput.appendChild(elem);
+        completedOutputText.value += text;
+        let len = input.value.length;
+        console.log(input.value, len);
+        setTimeout(() => {
+            console.log(input.value, len);
+            input.value = ""//input.value.substring(len)
+        });
+        console.log("done!")
+    }
+
+    function getRubiedElementAndText(kanjiKanaText, kanaText) {
+        const kanjiAndKanas = separateKanjiAndKana(kanjiKanaText);
+        const rubies = getRubiesKanjiAndKanas(kanjiAndKanas, kanaText)[0];
+        const container = document.createElement("span");
+        console.log(kanjiAndKanas, rubies)
+        let text = "";
+        let rubyIndex = 0;
+        for (let i = 0; i < kanjiAndKanas.length; i += 2) {
+            if (kanjiAndKanas[i] !== "") {
+                const ruby = document.createElement("ruby");
+                ruby.appendChild(document.createTextNode(kanjiAndKanas[i]));
+                ruby.appendChild((() => {
+                    const rp = document.createElement("rp");
+                    rp.textContent = "(";
+                    return rp;
+                })());
+                ruby.appendChild((() => {
+                    const rt = document.createElement("rt");
+                    rt.textContent = rubies[rubyIndex++];
+                    return rt;
+                })());
+                ruby.appendChild((() => {
+                    const rp = document.createElement("rp");
+                    rp.textContent = ")";
+                    return rp;
+                })());
+                container.appendChild(ruby);
+                text += kanjiAndKanas[i] + "（" + rubies[rubyIndex - 1] + "）";
+            }
+            if (kanjiAndKanas[i + 1]) {
+                container.appendChild(document.createTextNode(kanjiAndKanas[i + 1]));
+                text += kanjiAndKanas[i + 1];
+            }
+        }
+        return [container, text];
+    }
+
+    function getRubies(kanjiKanaText, kanaText) {
+        return getRubiesKanjiAndKanas(separateKanjiAndKana(kanjiKanaText), kanaText);
+    }
+
+    function getRubiesKanjiAndKanas(kanjiAndKanas, kanaText) {
+        return kanjiAndKanas[0] === "" ?
+            matchKana(1, 0, []) :
+            matchKanji(0, 0, []);
+
+        function matchKanji(kkp, kp, furiganas) {
+            // console.log("matchKanji", kkp, kp, furiganas);
+            if (kkp === kanjiAndKanas.length && kp == kanaText.length) {
+                return [furiganas];
+            }
+            if (kkp >= kanjiAndKanas.length || kp >= kanaText.length) return [];
+            let ret = [];
+            for (let i = kp + 1; i <= kanaText.length; i++) {
+                ret = ret.concat(matchKana(kkp + 1, i, furiganas.concat([kanaText.substring(kp, i)])));
+            }
+            return ret;
+        }
+
+        function matchKana(kkp, kp, furiganas) {
+            // console.log("matchKana", kkp, kp, furiganas);
+            if (kkp == kanjiAndKanas.length && kp == kanaText.length) {
+                return [furiganas];
+            }
+            if (kkp >= kanjiAndKanas.length || kp >= kanaText.length) return [];
+            const currentKana = kanjiAndKanas[kkp];
+            //if(kanaText.substring(kp).indexOf(currentKana)!==0) {
+            if (!hiraKataEquals(kanaText.substr(kp, currentKana.length), currentKana)) {
+                return []
+            }
+            return matchKanji(kkp + 1, kp + currentKana.length, furiganas);
+        }
+    }
+
+    function hiraKataEquals(hiraKata1, hiraKata2) {
+        return toKata(hiraKata1) === toKata(hiraKata2);
+
+        function toKata(hiraKata) {
+            return hiraKata.replace(/[ぁ-ん]/g, (s) =>
+                String.fromCharCode(s.charCodeAt(0) + 0x60)
+            );
+        }
+    }
+
+    function separateKanjiAndKana(kanjiKanaText) {
+        const ret = [];
+        const kanjiThenKana = /([^ぁ-んァ-ヶー，．、。？！　]*)([ぁ-んァ-ヶー，．、。？！　]*)/g;
+        let matched;
+        while ((matched = kanjiThenKana.exec(kanjiKanaText)).index < kanjiKanaText.length) {
+            ret.push(matched[1]);
+            if (matched[2].length > 0) {
+                ret.push(matched[2]);
+            }
+        }
+        return ret;
+    }
+
+</script>
